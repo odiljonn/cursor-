@@ -1,16 +1,33 @@
-# React + Vite
+# hard.oil sayt (Vite + React) + Express backend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Ishga tushirish (development)
 
-Currently, two official plugins are available:
+1. `cp .env.example .env` va `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SESSION_SECRET` ni to‘ldiring (server ham shu ildizdagi `.env` dan o‘qiydi).
+2. Frontend uchun: `VITE_USE_BACKEND=true`
+3. `npm install`
+4. `npm run dev` — Vite (`5173`) va Express (`8787`) birga ishga tushadi; brauzer `/api` ni proxy orqali serverga yuboradi.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+**Birinchi kirish:** login `admin`, parol `.env` dagi `ADMIN_INITIAL_PASSWORD` (default `hardoil2026`).
 
-## React Compiler
+## Production
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Frontend: `npm run build` → `dist` ni static hostingga.
+- Backend: `NODE_ENV=production npm run start:server` (yoki PM2/systemd).
+- `FRONTEND_ORIGIN` da real sayt URL; `SESSION_SECRET` kuchli bo‘lsin; `secure` cookie uchun HTTPS kerak.
 
-## Expanding the ESLint configuration
+## API
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+| Yo‘l | Tavsif |
+|------|--------|
+| `GET /api/site-data` | Sayt ma’lumoti (ommaviy) |
+| `POST /api/send-order` | Buyurtma matni → Telegram |
+| `POST /api/admin/login` | Admin login (session cookie) |
+| `POST /api/admin/logout` | Chiqish |
+| `PUT /api/admin/site-data` | Mahsulotlar / yangiliklar / kontakt (auth) |
+| `PATCH /api/admin/credentials` | Login/parol almashtirish (auth) |
+
+Ma’lumotlar `server/data/site.sqlite` da (git ignore).
+
+## Eski rejim
+
+`VITE_USE_BACKEND=false` qilsangiz, mahsulotlar yana `localStorage`da, Telegram esa (devda) to‘g‘ridan-to‘g‘ri frontenddan yuborilishi mumkin.

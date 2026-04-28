@@ -1,25 +1,27 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import logoImage from './assets/hardoil-logo.png'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import logoImage from './assets/hardline-logo.png'
 import './App.css'
 
 /* =============================================================================
    TELEGRAM BUYURTMA — SHU BLOKNI QIDIRING (token va guruh ID shu yerda)
    Agar loyiha ildizida .env bo‘lsa, u yeridagi qiymat ustun (VITE_TELEGRAM_*).
    ============================================================================= */
-const DEFAULT_TELEGRAM_BOT_TOKEN =
-  '8595627290:AAHrT9zJbIu2yjSSvQhpDRXg1gbWtDFP1Gg'
-/** Guruh chat_id (odatda minus bilan boshlanadi, masalan -517078355) */
-const DEFAULT_TELEGRAM_CHAT_ID = '-5170783553'
 /* ============================================================================= */
 
-const BOT_TOKEN = String(
-  import.meta.env.VITE_TELEGRAM_BOT_TOKEN ?? DEFAULT_TELEGRAM_BOT_TOKEN,
-).trim()
-const CHAT_ID = String(
-  import.meta.env.VITE_TELEGRAM_CHAT_ID ?? DEFAULT_TELEGRAM_CHAT_ID,
-).trim()
+const BOT_TOKEN = String(import.meta.env.VITE_TELEGRAM_BOT_TOKEN ?? '').trim()
+const CHAT_ID = String(import.meta.env.VITE_TELEGRAM_CHAT_ID ?? '').trim()
+const ORDER_API_URL = String(import.meta.env.VITE_ORDER_API_URL ?? '').trim()
 const TELEGRAM_GROUP_LINK =
   import.meta.env.VITE_TELEGRAM_GROUP_LINK || 'https://t.me/'
+const ADMIN_AUTH_KEY = 'hardoil_admin_auth_v1'
+
+const USE_BACKEND = import.meta.env.VITE_USE_BACKEND === 'true'
+const API_BASE = String(import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '')
+
+function apiUrl(path) {
+  const p = path.startsWith('/') ? path : `/${path}`
+  return `${API_BASE}${p}`
+}
 
 const LANGUAGES = ['UZ', 'RU', 'EN', 'ZH']
 const SECTION_IDS = ['home', 'products', 'about', 'news', 'contact']
@@ -30,6 +32,8 @@ const ABOUT_PARTNER_BG = '/images/about-partner.jpg'
 const LOCAL_PRODUCT_IMAGES = Array.from({ length: 12 }, (_, i) =>
   `/images/oil/${String(i + 1).padStart(2, '0')}.jpg`,
 )
+const PRODUCT_FALLBACK_IMAGE =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='900' height='540' viewBox='0 0 900 540'%3E%3Crect width='900' height='540' fill='%23121b2e'/%3E%3Crect x='60' y='60' width='780' height='420' rx='24' fill='%231b2945' stroke='%23384b72' stroke-width='4'/%3E%3Ccircle cx='360' cy='250' r='70' fill='%232d4166'/%3E%3Cpath d='M420 330l95-105 130 145H250l105-110z' fill='%23384f7d'/%3E%3Ctext x='450' y='430' fill='%238da6cf' font-family='Arial,sans-serif' font-size='34' text-anchor='middle'%3ERasm yuklanmagan%3C/text%3E%3C/svg%3E"
 
 const translations = {
   UZ: {
@@ -511,7 +515,92 @@ function normalizeAboutContent(raw) {
   return base
 }
 
-const SITE_BOOTSTRAP = loadPersistedSite()
+function loadAdminCredentials() {
+  const fallback = { username: 'admin', password: 'hardoil2026' }
+  if (typeof localStorage === 'undefined') return fallback
+  try {
+    const raw = localStorage.getItem(ADMIN_AUTH_KEY)
+    if (!raw) return fallback
+    const parsed = JSON.parse(raw)
+    const username = String(parsed?.username ?? '').trim()
+    const password = String(parsed?.password ?? '')
+    if (!username || !password) return fallback
+    return { username, password }
+  } catch {
+    return fallback
+  }
+}
+
+function persistAdminCredentials(next) {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(ADMIN_AUTH_KEY, JSON.stringify(next))
+  } catch {
+    /* ignore quota */
+  }
+}
+
+function isHeicLikeFile(file) {
+  const type = String(file?.type || '').toLowerCase()
+  const name = String(file?.name || '').toLowerCase()
+  return type.includes('heic') || type.includes('heif') || name.endsWith('.heic') || name.endsWith('.heif')
+}
+
+async function normalizeImageFile(file) {
+  if (!file || !isHeicLikeFile(file)) return file
+  const { default: heic2any } = await import('heic2any')
+  const converted = await heic2any({
+    blob: file,
+    toType: 'image/jpeg',
+    quality: 0.9,
+  })
+  const blob = Array.isArray(converted) ? converted[0] : converted
+  if (!(blob instanceof Blob)) return file
+  const baseName = String(file.name || 'upload').replace(/\.[^/.]+$/, '')
+  return new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' })
+}
+
+async function resizeImageFile(file, options = {}) {
+  const { maxWidth = 1200, maxHeight = 1200, quality = 0.82, mimeType = 'image/webp' } = options
+  const normalizedFile = await normalizeImageFile(file)
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const img = new Image()
+      img.onload = () => {
+        const scale = Math.min(1, maxWidth / img.width, maxHeight / img.height)
+        const width = Math.max(1, Math.round(img.width * scale))
+        const height = Math.max(1, Math.round(img.height * scale))
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          reject(new Error('Canvas context unavailable'))
+          return
+        }
+        ctx.drawImage(img, 0, 0, width, height)
+        resolve(canvas.toDataURL(mimeType, quality))
+      }
+      img.onerror = () => reject(new Error('Image decode failed'))
+      img.src = String(reader.result || '')
+    }
+    reader.onerror = () => reject(new Error('File read failed'))
+    reader.readAsDataURL(normalizedFile)
+  })
+}
+
+async function readFileAsDataUrl(file) {
+  const normalizedFile = await normalizeImageFile(file)
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('File read failed'))
+    reader.readAsDataURL(normalizedFile)
+  })
+}
+
+const SITE_BOOTSTRAP = USE_BACKEND ? null : loadPersistedSite()
 
 const langLabel = (code) => {
   if (code === 'UZ') return 'UZB'
@@ -542,9 +631,23 @@ function App() {
 
   const [showAdmin, setShowAdmin] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [isHeaderSolid, setIsHeaderSolid] = useState(false)
+  const [adminCredentials, setAdminCredentials] = useState(() => loadAdminCredentials())
+  const [serverUsername, setServerUsername] = useState('')
   const [loginData, setLoginData] = useState({ username: '', password: '' })
+  const [showLoginPassword, setShowLoginPassword] = useState(false)
   const [loginError, setLoginError] = useState('')
+  const [showCredentialModal, setShowCredentialModal] = useState(false)
+  const [credentialNotice, setCredentialNotice] = useState('')
+  const [credentialForm, setCredentialForm] = useState({
+    currentPassword: '',
+    nextUsername: '',
+    nextPassword: '',
+    confirmPassword: '',
+  })
   const [statusMessage, setStatusMessage] = useState('')
+  const [isNewImageProcessing, setIsNewImageProcessing] = useState(false)
+  const [showCredentialPasswords, setShowCredentialPasswords] = useState(false)
   const [newProduct, setNewProduct] = useState({
     name: '',
     price: '',
@@ -598,26 +701,53 @@ function App() {
     }
   }, [mobileNavOpen])
 
+  useEffect(() => {
+    const onScroll = () => {
+      setIsHeaderSolid(window.scrollY > 10)
+    }
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  useEffect(() => {
+    if (!USE_BACKEND) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await fetch(apiUrl('/api/site-data'))
+        if (!r.ok) return
+        const data = await r.json()
+        if (cancelled || !data) return
+        if (Array.isArray(data.products) && data.products.length) {
+          setProducts(data.products)
+        }
+        if (data.news) setNews(normalizeNewsData(data.news))
+        if (data.aboutContent) setAboutContent(normalizeAboutContent(data.aboutContent))
+        if (data.contactData) setContactData(normalizeContactData(data.contactData))
+      } catch {
+        /* ignore */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const goToSection = (sectionId) => {
     setActiveSection(sectionId)
     setMobileNavOpen(false)
   }
 
-  useLayoutEffect(() => {
-    if (!showAdmin || !isAdmin) {
-      setAdminDraft(null)
-      return
-    }
-    setAdminDraft({
-      products: JSON.parse(JSON.stringify(products)),
-      news: JSON.parse(JSON.stringify(news)),
-      aboutContent: JSON.parse(JSON.stringify(aboutContent)),
-      contactData: JSON.parse(JSON.stringify(contactData)),
-    })
-  }, [showAdmin, isAdmin, products, news, aboutContent, contactData])
-
   const selectedItems = products.filter((p) => cart[p.id])
   const totalPrice = selectedItems.reduce((acc, p) => acc + p.price * cart[p.id], 0)
+
+  const createAdminDraftSnapshot = () => ({
+    products: JSON.parse(JSON.stringify(products)),
+    news: JSON.parse(JSON.stringify(news)),
+    aboutContent: JSON.parse(JSON.stringify(aboutContent)),
+    contactData: JSON.parse(JSON.stringify(contactData)),
+  })
 
   const formatPrice = (price) => {
     const locale = language === 'EN' ? 'en-US' : language === 'ZH' ? 'zh-CN' : 'uz-UZ'
@@ -640,21 +770,147 @@ function App() {
     setCart((prev) => ({ ...prev, [id]: Math.max(0, nextQty) }))
   }
 
-  const handleLogin = (event) => {
+  const handleLogin = async (event) => {
     event.preventDefault()
-    if (loginData.username === 'admin' && loginData.password === 'hardoil2026') {
+    if (USE_BACKEND) {
+      try {
+        const r = await fetch(apiUrl('/api/admin/login'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            username: loginData.username.trim(),
+            password: loginData.password,
+          }),
+        })
+        const data = await r.json().catch(() => ({}))
+        if (!r.ok) {
+          setLoginError(t.wrong)
+          return
+        }
+        setServerUsername(String(data.username || loginData.username.trim()))
+        setIsAdmin(true)
+        setAdminDraft(createAdminDraftSnapshot())
+        setLoginError('')
+      } catch {
+        setLoginError(t.wrong)
+      }
+      return
+    }
+    if (
+      loginData.username === adminCredentials.username &&
+      loginData.password === adminCredentials.password
+    ) {
       setIsAdmin(true)
+      setAdminDraft(createAdminDraftSnapshot())
       setLoginError('')
       return
     }
     setLoginError(t.wrong)
   }
 
-  const applyAdminDraftToSite = () => {
+  const openCredentialModal = () => {
+    setCredentialNotice('')
+    setShowCredentialPasswords(false)
+    setCredentialForm({
+      currentPassword: '',
+      nextUsername: USE_BACKEND ? serverUsername || loginData.username.trim() || 'admin' : adminCredentials.username,
+      nextPassword: '',
+      confirmPassword: '',
+    })
+    setShowCredentialModal(true)
+  }
+
+  const saveCredentialChanges = async (event) => {
+    event.preventDefault()
+    const nextUsername = credentialForm.nextUsername.trim()
+    const nextPassword = credentialForm.nextPassword
+    if (nextUsername.length < 3) {
+      setCredentialNotice('Yangi login kamida 3 ta belgidan iborat bo‘lsin.')
+      return
+    }
+    if (nextPassword.length < 8 || !/[A-Za-z]/.test(nextPassword) || !/\d/.test(nextPassword)) {
+      setCredentialNotice('Yangi parol kamida 8 ta, harf va raqam bo‘lsin.')
+      return
+    }
+    if (nextPassword !== credentialForm.confirmPassword) {
+      setCredentialNotice('Parol tasdiqlashi mos emas.')
+      return
+    }
+    if (USE_BACKEND) {
+      try {
+        const r = await fetch(apiUrl('/api/admin/credentials'), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            currentPassword: credentialForm.currentPassword,
+            nextUsername,
+            nextPassword,
+          }),
+        })
+        const errBody = await r.json().catch(() => ({}))
+        if (!r.ok) {
+          setCredentialNotice(
+            errBody.error === 'current password wrong'
+              ? 'Joriy parol noto‘g‘ri.'
+              : String(errBody.error || 'Saqlashda xatolik.'),
+          )
+          return
+        }
+        setServerUsername(nextUsername)
+        setShowCredentialModal(false)
+        setCredentialNotice('')
+      } catch {
+        setCredentialNotice('Tarmoq xatosi.')
+      }
+      return
+    }
+    if (credentialForm.currentPassword !== adminCredentials.password) {
+      setCredentialNotice('Joriy parol noto‘g‘ri.')
+      return
+    }
+    const next = { username: nextUsername, password: nextPassword }
+    setAdminCredentials(next)
+    persistAdminCredentials(next)
+    setShowCredentialModal(false)
+    setCredentialNotice('Login/parol yangilandi.')
+  }
+
+  const applyAdminDraftToSite = async () => {
     if (!adminDraft) return
     const nextContact = {}
     for (const lang of LANGUAGES) {
       nextContact[lang] = cleanContactEntryForSave(adminDraft.contactData[lang])
+    }
+    if (USE_BACKEND) {
+      try {
+        const r = await fetch(apiUrl('/api/admin/site-data'), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            products: adminDraft.products,
+            news: adminDraft.news,
+            aboutContent: adminDraft.aboutContent,
+            contactData: nextContact,
+          }),
+        })
+        const errBody = await r.json().catch(() => ({}))
+        if (!r.ok) {
+          setStatusMessage(String(errBody.error || `Saqlashda xatolik (${r.status})`))
+          return
+        }
+        setProducts(adminDraft.products)
+        setNews(adminDraft.news)
+        setAboutContent(adminDraft.aboutContent)
+        setContactData(nextContact)
+        setSaveNotice(`✓ ${translations[language].saveSuccess}`)
+        window.setTimeout(() => setSaveNotice(''), 3500)
+      } catch {
+        setStatusMessage('Serverga ulanib bo‘lmadi.')
+      }
+      return
     }
     setProducts(adminDraft.products)
     setNews(adminDraft.news)
@@ -673,8 +929,22 @@ function App() {
     } catch {
       /* ignore quota */
     }
-    setSaveNotice(translations[language].saveSuccess)
+    setSaveNotice(`✓ ${translations[language].saveSuccess}`)
     window.setTimeout(() => setSaveNotice(''), 3500)
+  }
+
+  const handleAdminLogout = async () => {
+    if (USE_BACKEND) {
+      try {
+        await fetch(apiUrl('/api/admin/logout'), {
+          method: 'POST',
+          credentials: 'include',
+        })
+      } catch {
+        /* ignore */
+      }
+    }
+    setIsAdmin(false)
   }
 
   const updateDraftProduct = (id, field, rawValue) => {
@@ -691,10 +961,28 @@ function App() {
     })
   }
 
+  const uploadImageToDraftProduct = async (id, file) => {
+    if (!file) return
+    try {
+      const dataUrl = await resizeImageFile(file)
+      updateDraftProduct(id, 'image', dataUrl)
+      setStatusMessage('Rasm tanlandi va optimizatsiya qilindi.')
+    } catch {
+      try {
+        const fallbackDataUrl = await readFileAsDataUrl(file)
+        updateDraftProduct(id, 'image', fallbackDataUrl)
+        setStatusMessage('Rasm original holatda qo‘shildi.')
+      } catch {
+        setStatusMessage('Rasmni qayta ishlashda xatolik yuz berdi.')
+      }
+    }
+  }
+
   const addProductToDraft = (event) => {
     event.preventDefault()
     if (!adminDraft) return
-    const img = newProduct.image.trim() || LOCAL_PRODUCT_IMAGES[0]
+    if (isNewImageProcessing) return
+    const img = newProduct.image.trim() || PRODUCT_FALLBACK_IMAGE
     if (!newProduct.name.trim() || newProduct.price === '') return
     const nextId =
       adminDraft.products.length > 0
@@ -713,6 +1001,26 @@ function App() {
       ],
     })
     setNewProduct({ name: '', price: '', image: '' })
+  }
+
+  const handleNewProductImageFile = async (file) => {
+    if (!file) return
+    setIsNewImageProcessing(true)
+    try {
+      const dataUrl = await resizeImageFile(file)
+      setNewProduct((prev) => ({ ...prev, image: dataUrl }))
+      setStatusMessage('Yangi mahsulot rasmi tanlandi.')
+    } catch {
+      try {
+        const fallbackDataUrl = await readFileAsDataUrl(file)
+        setNewProduct((prev) => ({ ...prev, image: fallbackDataUrl }))
+        setStatusMessage('Rasm original holatda qo‘shildi.')
+      } catch {
+        setStatusMessage('Rasmni yuklashda xatolik yuz berdi.')
+      }
+    } finally {
+      setIsNewImageProcessing(false)
+    }
   }
 
   const removeDraftProduct = (id) => {
@@ -806,6 +1114,28 @@ function App() {
   }
 
   const sendToTelegram = async (message) => {
+    const mustUseServerOrder = import.meta.env.PROD || USE_BACKEND
+    const orderUrl =
+      ORDER_API_URL.trim() ||
+      (mustUseServerOrder ? apiUrl('/api/send-order') : '')
+
+    if (orderUrl) {
+      const response = await fetch(orderUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: message }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || data.ok === false) {
+        throw new Error(data.description || data.error || `HTTP ${response.status}`)
+      }
+      return
+    }
+
+    if (import.meta.env.PROD) {
+      throw new Error('Buyurtma serveri sozlanmagan (VITE_USE_BACKEND yoki VITE_ORDER_API_URL).')
+    }
+
     if (BOT_TOKEN && CHAT_ID) {
       const chatId =
         /^-?\d+$/.test(CHAT_ID) ? Number(CHAT_ID) : CHAT_ID
@@ -868,7 +1198,7 @@ function App() {
             const isSelected = Boolean(cart[product.id])
             return (
               <article className="card" key={product.id}>
-                <img src={product.image} alt={product.name} />
+                <img src={product.image || PRODUCT_FALLBACK_IMAGE} alt={product.name} />
                 <h3>{product.name}</h3>
                 <p>
                   {formatPrice(product.price)} {t.uzs}
@@ -939,9 +1269,9 @@ function App() {
 
   return (
     <div className={`app ${isLightMode ? 'light-mode' : ''}`}>
-      <header className="header">
+      <header className={`header ${isHeaderSolid ? 'scrolled' : ''}`}>
         <button className="logo-wrap" type="button" onClick={() => goToSection('home')}>
-          <img src={logoImage} alt="hard.oil logo" />
+          <img className="header-brand-logo" src={logoImage} alt="Hard Line logo" />
         </button>
 
         <nav className="nav-menu nav-menu-desktop" aria-label="Main navigation">
@@ -1214,6 +1544,7 @@ function App() {
         className="admin-fab"
         onClick={() => {
           setShowAdmin(true)
+          if (isAdmin) setAdminDraft(createAdminDraftSnapshot())
           setAdminEditLang(language)
         }}
       >
@@ -1233,14 +1564,25 @@ function App() {
                     setLoginData((prev) => ({ ...prev, username: e.target.value }))
                   }
                 />
-                <input
-                  type="password"
-                  placeholder={t.password}
-                  value={loginData.password}
-                  onChange={(e) =>
-                    setLoginData((prev) => ({ ...prev, password: e.target.value }))
-                  }
-                />
+                <div className="password-input-wrap">
+                  <input
+                    type={showLoginPassword ? 'text' : 'password'}
+                    placeholder={t.password}
+                    value={loginData.password}
+                    onChange={(e) =>
+                      setLoginData((prev) => ({ ...prev, password: e.target.value }))
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle-btn"
+                    onClick={() => setShowLoginPassword((v) => !v)}
+                    aria-label={showLoginPassword ? 'Parolni yashirish' : 'Parolni ko‘rsatish'}
+                    title={showLoginPassword ? 'Parolni yashirish' : 'Parolni ko‘rsatish'}
+                  >
+                    {showLoginPassword ? '🙈' : '👁'}
+                  </button>
+                </div>
                 <button type="submit">{t.enter}</button>
                 <button type="button" onClick={() => setShowAdmin(false)}>
                   {t.close}
@@ -1251,13 +1593,31 @@ function App() {
               <div className="admin-panel">
                 <div className="admin-top">
                   <h3>{t.adminLogin}</h3>
-                  <button type="button" onClick={() => setIsAdmin(false)}>
-                    {t.logout}
-                  </button>
+                  <div className="admin-top-actions">
+                    <button
+                      type="button"
+                      className="admin-lock-btn"
+                      title="Login/parolni almashtirish"
+                      aria-label="Login/parolni almashtirish"
+                      onClick={openCredentialModal}
+                    >
+                      🔒
+                    </button>
+                    <button type="button" onClick={handleAdminLogout}>
+                      {t.logout}
+                    </button>
+                  </div>
                 </div>
                 <p className="admin-hint">{t.adminHint}</p>
                 <p className="admin-draft-hint">{t.adminDraftHint}</p>
-                {saveNotice && <p className="admin-save-notice">{saveNotice}</p>}
+                {saveNotice && (
+                  <p className="admin-save-notice" role="status" aria-live="polite">
+                    <span className="admin-save-check" aria-hidden>
+                      ✔
+                    </span>
+                    <span>{saveNotice}</span>
+                  </p>
+                )}
 
                 <div className="admin-tabs" role="tablist">
                   {[
@@ -1323,6 +1683,25 @@ function App() {
                                   }
                                 />
                               </label>
+                              <div className="admin-image-preview-wrap">
+                                <span className="admin-image-preview-label">Tanlangan rasm</span>
+                                <img
+                                  className="admin-image-preview"
+                                  src={item.image || PRODUCT_FALLBACK_IMAGE}
+                                  alt={item.name}
+                                  loading="lazy"
+                                />
+                              </div>
+                              <label>
+                                Rasm fayli
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={(e) =>
+                                    uploadImageToDraftProduct(item.id, e.target.files?.[0])
+                                  }
+                                />
+                              </label>
                               <button
                                 type="button"
                                 className="btn-remove-product"
@@ -1355,13 +1734,31 @@ function App() {
                           }
                         />
                         <input
-                          placeholder={`${t.productImage} (${LOCAL_PRODUCT_IMAGES[0]})`}
+                          placeholder={t.productImage}
                           value={newProduct.image}
                           onChange={(e) =>
                             setNewProduct((prev) => ({ ...prev, image: e.target.value }))
                           }
                         />
-                        <button type="submit">{t.addToDraft}</button>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => handleNewProductImageFile(e.target.files?.[0])}
+                        />
+                        {newProduct.image ? (
+                          <div className="admin-image-preview-wrap">
+                            <span className="admin-image-preview-label">Yangi mahsulot rasmi</span>
+                            <img
+                              className="admin-image-preview"
+                              src={newProduct.image || PRODUCT_FALLBACK_IMAGE}
+                              alt="Yangi mahsulot preview"
+                              loading="lazy"
+                            />
+                          </div>
+                        ) : null}
+                        <button type="submit" disabled={isNewImageProcessing}>
+                          {isNewImageProcessing ? 'Rasm tayyorlanmoqda...' : t.addToDraft}
+                        </button>
                       </form>
                     </div>
                   </div>
@@ -1572,7 +1969,7 @@ function App() {
                 <div className="admin-actions">
                   <button
                     type="button"
-                    className="btn-apply-changes"
+                    className={`btn-apply-changes ${saveNotice ? 'saved' : ''}`}
                     disabled={!adminDraft}
                     onClick={applyAdminDraftToSite}
                   >
@@ -1586,6 +1983,75 @@ function App() {
                     {t.close}
                   </button>
                 </div>
+                {showCredentialModal && (
+                  <div className="credential-modal-overlay">
+                    <form className="credential-modal" onSubmit={saveCredentialChanges}>
+                      <h4>Login/parolni almashtirish</h4>
+                      <input
+                        type={showCredentialPasswords ? 'text' : 'password'}
+                        placeholder="Joriy parol"
+                        value={credentialForm.currentPassword}
+                        onChange={(e) =>
+                          setCredentialForm((prev) => ({
+                            ...prev,
+                            currentPassword: e.target.value,
+                          }))
+                        }
+                      />
+                      <input
+                        type="text"
+                        placeholder="Yangi login"
+                        value={credentialForm.nextUsername}
+                        onChange={(e) =>
+                          setCredentialForm((prev) => ({
+                            ...prev,
+                            nextUsername: e.target.value,
+                          }))
+                        }
+                      />
+                      <input
+                        type={showCredentialPasswords ? 'text' : 'password'}
+                        placeholder="Yangi parol"
+                        value={credentialForm.nextPassword}
+                        onChange={(e) =>
+                          setCredentialForm((prev) => ({
+                            ...prev,
+                            nextPassword: e.target.value,
+                          }))
+                        }
+                      />
+                      <input
+                        type={showCredentialPasswords ? 'text' : 'password'}
+                        placeholder="Yangi parolni tasdiqlang"
+                        value={credentialForm.confirmPassword}
+                        onChange={(e) =>
+                          setCredentialForm((prev) => ({
+                            ...prev,
+                            confirmPassword: e.target.value,
+                          }))
+                        }
+                      />
+                      {credentialNotice ? <p className="status">{credentialNotice}</p> : null}
+                      <button
+                        type="button"
+                        className="password-toggle-inline"
+                        onClick={() => setShowCredentialPasswords((v) => !v)}
+                      >
+                        {showCredentialPasswords ? 'Parollarni yashirish' : 'Parollarni ko‘rsatish'}
+                      </button>
+                      <div className="credential-modal-actions">
+                        <button type="submit">Saqlash</button>
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => setShowCredentialModal(false)}
+                        >
+                          Bekor qilish
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                )}
               </div>
             )}
           </div>

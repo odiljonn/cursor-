@@ -27,10 +27,24 @@
   -webkit-backdrop-filter: saturate(160%) blur(16px);
 }
 
+.header.scrolled {
+  background: #0a1322;
+  border-bottom-color: rgba(255, 255, 255, 0.14);
+  backdrop-filter: saturate(140%) blur(8px);
+  -webkit-backdrop-filter: saturate(140%) blur(8px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+}
+
 .app.light-mode .header {
   background: rgba(255, 255, 255, 0.52);
   border-bottom: 1px solid rgba(15, 61, 107, 0.12);
   box-shadow: 0 8px 32px rgba(15, 61, 107, 0.06);
+}
+
+.app.light-mode .header.scrolled {
+  background: #ffffff;
+  border-bottom-color: rgba(15, 61, 107, 0.16);
+  box-shadow: 0 10px 24px rgba(15, 61, 107, 0.12);
 }
 
 .header-toolbar {
@@ -53,6 +67,10 @@
   border-radius: 50%;
   object-fit: cover;
   border: 2px solid #b41e2a;
+}
+
+.logo-wrap img.header-brand-logo {
+  object-position: 50% 40%;
 }
 
 .logo-wrap {
@@ -1056,6 +1074,23 @@
   max-width: 380px;
 }
 
+.password-input-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.password-toggle-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  cursor: pointer;
+}
+
 .admin-login button,
 .close-admin,
 .admin-panel > .admin-top button {
@@ -1094,6 +1129,33 @@
   border: 1px solid rgba(46, 160, 67, 0.45);
   color: #b6f0c8;
   font-size: 0.88rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  animation: saveNoticeIn 300ms ease;
+}
+
+.admin-save-check {
+  display: inline-grid;
+  place-items: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  background: rgba(46, 160, 67, 0.28);
+  color: #d4ffe1;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+@keyframes saveNoticeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .admin-loading {
@@ -1158,6 +1220,27 @@
   font-size: 0.88rem;
 }
 
+.admin-image-preview-wrap {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.admin-image-preview-label {
+  font-size: 0.74rem;
+  color: #8fa6c4;
+  font-weight: 600;
+}
+
+.admin-image-preview {
+  width: 100%;
+  max-width: 180px;
+  height: 108px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .admin-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1178,6 +1261,26 @@
   font-weight: 700;
   font-size: 0.95rem;
   cursor: pointer;
+}
+
+.btn-apply-changes.saved {
+  animation: applySavedPulse 900ms ease;
+  box-shadow: 0 0 0 0 rgba(46, 160, 67, 0.45);
+}
+
+@keyframes applySavedPulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(46, 160, 67, 0.45);
+  }
+  35% {
+    transform: scale(1.015);
+    box-shadow: 0 0 0 10px rgba(46, 160, 67, 0.08);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(46, 160, 67, 0);
+  }
 }
 
 .btn-apply-changes:disabled {
@@ -1355,6 +1458,83 @@
   justify-content: space-between;
 }
 
+.admin-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.admin-lock-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 0.95rem;
+}
+
+.credential-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(2, 6, 14, 0.66);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.credential-modal {
+  width: min(430px, 100%);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #0f1728;
+  padding: 1rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.credential-modal h4 {
+  margin: 0 0 0.25rem;
+}
+
+.credential-modal input {
+  border-radius: 10px;
+  padding: 0.68rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.password-toggle-inline {
+  justify-self: start;
+  padding: 0.48rem 0.7rem;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  color: #dbe4f0;
+  cursor: pointer;
+}
+
+.credential-modal-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.credential-modal-actions button {
+  padding: 0.6rem 0.85rem;
+  border-radius: 10px;
+  border: none;
+  background: #b41e2a;
+  color: #fff;
+}
+
+.credential-modal-actions .secondary {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
 .admin-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1422,6 +1602,10 @@
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 0.4rem 0.5rem;
     padding-inline: 0.75rem;
+  }
+
+  .header.scrolled {
+    background: #0a1322;
   }
 
   .header-toolbar {
