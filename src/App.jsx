@@ -15,14 +15,6 @@ const TELEGRAM_GROUP_LINK =
   import.meta.env.VITE_TELEGRAM_GROUP_LINK || 'https://t.me/'
 const ADMIN_AUTH_KEY = 'hardoil_admin_auth_v1'
 
-const USE_BACKEND = import.meta.env.VITE_USE_BACKEND === 'true'
-const API_BASE = String(import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '')
-
-function apiUrl(path) {
-  const p = path.startsWith('/') ? path : `/${path}`
-  return `${API_BASE}${p}`
-}
-
 const LANGUAGES = ['UZ', 'RU', 'EN', 'ZH']
 const SECTION_IDS = ['home', 'products', 'about', 'news', 'contact']
 const STORAGE_KEY = 'hardoil_site_v1'
@@ -362,11 +354,19 @@ const translations = {
   },
 }
 
-const heroSlides = [
-  { src: '/images/oil/01.jpg', alt: 'hard.oil — premium avtomobillar' },
-  { src: '/images/oil/02.jpg', alt: 'Sport avtomobillar va moylash' },
-  { src: '/images/oil/03.jpg', alt: 'Dvigatel va professional moy' },
-]
+// You can replace this URL with your own hero video.
+const HERO_VIDEO_URL = 'https://videos.pexels.com/video-files/3129671/3129671-uhd_2560_1440_25fps.mp4'
+const HERO_POSTER_URL = '/images/oil/01.jpg'
+const DEFAULT_MAP_QUERY =
+  'Замена масло HARDT oil Moy almashtirish, Город, 000002, Termez, Surxondaryo Region, Uzbekistan'
+
+const FOOTER_INFO = {
+  desc: 'hard.oil - premium motor moylari va professional servis hamkorligi.',
+  menu: ['Bosh sahifa', 'Mahsulotlar', 'Biz haqimizda', 'Yangiliklar', 'Kontakt'],
+  services: ['Premium motor moylari', 'Wholesale hamkorlik', 'Servis markazlari'],
+  email: 'hardoil.official@gmail.com',
+  address: 'Uzbekistan, Termez',
+}
 
 function getDefaultProducts() {
   return Array.from({ length: 29 }, (_, i) => ({
@@ -428,24 +428,28 @@ const initialContactData = {
     email: 'hardoil.official@gmail.com',
     phones: [DEFAULT_PUBLIC_PHONE],
     headerPhone: DEFAULT_PUBLIC_PHONE,
+    mapQuery: DEFAULT_MAP_QUERY,
   },
   RU: {
     desc: translations.RU.contactDesc,
     email: 'hardoil.official@gmail.com',
     phones: [DEFAULT_PUBLIC_PHONE],
     headerPhone: DEFAULT_PUBLIC_PHONE,
+    mapQuery: DEFAULT_MAP_QUERY,
   },
   EN: {
     desc: translations.EN.contactDesc,
     email: 'hardoil.official@gmail.com',
     phones: [DEFAULT_PUBLIC_PHONE],
     headerPhone: DEFAULT_PUBLIC_PHONE,
+    mapQuery: DEFAULT_MAP_QUERY,
   },
   ZH: {
     desc: translations.ZH.contactDesc,
     email: 'hardoil.official@gmail.com',
     phones: [DEFAULT_PUBLIC_PHONE],
     headerPhone: DEFAULT_PUBLIC_PHONE,
+    mapQuery: DEFAULT_MAP_QUERY,
   },
 }
 
@@ -467,6 +471,7 @@ function normalizeContactEntry(entry, fallback) {
     email: entry?.email ?? fallback.email,
     phones: phones.slice(0, 6),
     headerPhone,
+    mapQuery: String(entry?.mapQuery ?? fallback.mapQuery ?? DEFAULT_MAP_QUERY).trim() || DEFAULT_MAP_QUERY,
   }
 }
 
@@ -479,6 +484,7 @@ function cleanContactEntryForSave(entry) {
     email: entry.email,
     phones: list,
     headerPhone: header || list[0] || DEFAULT_PUBLIC_PHONE,
+    mapQuery: String(entry.mapQuery || '').trim() || DEFAULT_MAP_QUERY,
   }
 }
 
@@ -600,10 +606,18 @@ async function readFileAsDataUrl(file) {
   })
 }
 
-const SITE_BOOTSTRAP = USE_BACKEND ? null : loadPersistedSite()
+const SITE_BOOTSTRAP = loadPersistedSite()
 
 const langLabel = (code) => {
-  if (code === 'UZ') return 'UZB'
+  if (code === 'UZ') return 'UZ'
+  if (code === 'ZH') return '中文'
+  return code
+}
+
+const langLongLabel = (code) => {
+  if (code === 'UZ') return "O'zbek"
+  if (code === 'RU') return 'Русский'
+  if (code === 'EN') return 'English'
   if (code === 'ZH') return '中文'
   return code
 }
@@ -611,7 +625,7 @@ const langLabel = (code) => {
 function App() {
   const [language, setLanguage] = useState('UZ')
   const [isLightMode, setIsLightMode] = useState(false)
-  const [heroSlideIndex, setHeroSlideIndex] = useState(0)
+  const [homeHeroKey, setHomeHeroKey] = useState(0)
   const [activeSection, setActiveSection] = useState('home')
   const [products, setProducts] = useState(
     () => SITE_BOOTSTRAP?.products ?? getDefaultProducts(),
@@ -633,7 +647,6 @@ function App() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [isHeaderSolid, setIsHeaderSolid] = useState(false)
   const [adminCredentials, setAdminCredentials] = useState(() => loadAdminCredentials())
-  const [serverUsername, setServerUsername] = useState('')
   const [loginData, setLoginData] = useState({ username: '', password: '' })
   const [showLoginPassword, setShowLoginPassword] = useState(false)
   const [loginError, setLoginError] = useState('')
@@ -670,13 +683,6 @@ function App() {
   )
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setHeroSlideIndex((prev) => (prev + 1) % heroSlides.length)
-    }, 3000)
-    return () => clearInterval(timer)
-  }, [])
-
-  useEffect(() => {
     if (!langMenuOpen) return
     const onDocClick = (e) => {
       if (langDropdownRef.current && !langDropdownRef.current.contains(e.target)) {
@@ -710,31 +716,10 @@ function App() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  useEffect(() => {
-    if (!USE_BACKEND) return
-    let cancelled = false
-    ;(async () => {
-      try {
-        const r = await fetch(apiUrl('/api/site-data'))
-        if (!r.ok) return
-        const data = await r.json()
-        if (cancelled || !data) return
-        if (Array.isArray(data.products) && data.products.length) {
-          setProducts(data.products)
-        }
-        if (data.news) setNews(normalizeNewsData(data.news))
-        if (data.aboutContent) setAboutContent(normalizeAboutContent(data.aboutContent))
-        if (data.contactData) setContactData(normalizeContactData(data.contactData))
-      } catch {
-        /* ignore */
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
   const goToSection = (sectionId) => {
+    if (sectionId === 'home' && activeSection !== 'home') {
+      setHomeHeroKey((prev) => prev + 1)
+    }
     setActiveSection(sectionId)
     setMobileNavOpen(false)
   }
@@ -758,6 +743,9 @@ function App() {
   const headerPhoneFallback = (contactData[language].phones?.[0] || '').trim()
   const headerPhoneTooltip = headerPhoneDisplay || headerPhoneFallback
   const headerPhoneHref = headerPhoneTooltip.replace(/[^\d+]/g, '')
+  const mapQuery = String(contactData[language].mapQuery || DEFAULT_MAP_QUERY).trim()
+  const mapsLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`
+  const mapsEmbed = `https://www.google.com/maps?q=${encodeURIComponent(mapQuery)}&output=embed`
 
   const toggleSelection = (id) => {
     setCart((prev) => {
@@ -770,33 +758,8 @@ function App() {
     setCart((prev) => ({ ...prev, [id]: Math.max(0, nextQty) }))
   }
 
-  const handleLogin = async (event) => {
+  const handleLogin = (event) => {
     event.preventDefault()
-    if (USE_BACKEND) {
-      try {
-        const r = await fetch(apiUrl('/api/admin/login'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            username: loginData.username.trim(),
-            password: loginData.password,
-          }),
-        })
-        const data = await r.json().catch(() => ({}))
-        if (!r.ok) {
-          setLoginError(t.wrong)
-          return
-        }
-        setServerUsername(String(data.username || loginData.username.trim()))
-        setIsAdmin(true)
-        setAdminDraft(createAdminDraftSnapshot())
-        setLoginError('')
-      } catch {
-        setLoginError(t.wrong)
-      }
-      return
-    }
     if (
       loginData.username === adminCredentials.username &&
       loginData.password === adminCredentials.password
@@ -814,14 +777,14 @@ function App() {
     setShowCredentialPasswords(false)
     setCredentialForm({
       currentPassword: '',
-      nextUsername: USE_BACKEND ? serverUsername || loginData.username.trim() || 'admin' : adminCredentials.username,
+      nextUsername: adminCredentials.username,
       nextPassword: '',
       confirmPassword: '',
     })
     setShowCredentialModal(true)
   }
 
-  const saveCredentialChanges = async (event) => {
+  const saveCredentialChanges = (event) => {
     event.preventDefault()
     const nextUsername = credentialForm.nextUsername.trim()
     const nextPassword = credentialForm.nextPassword
@@ -837,35 +800,6 @@ function App() {
       setCredentialNotice('Parol tasdiqlashi mos emas.')
       return
     }
-    if (USE_BACKEND) {
-      try {
-        const r = await fetch(apiUrl('/api/admin/credentials'), {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            currentPassword: credentialForm.currentPassword,
-            nextUsername,
-            nextPassword,
-          }),
-        })
-        const errBody = await r.json().catch(() => ({}))
-        if (!r.ok) {
-          setCredentialNotice(
-            errBody.error === 'current password wrong'
-              ? 'Joriy parol noto‘g‘ri.'
-              : String(errBody.error || 'Saqlashda xatolik.'),
-          )
-          return
-        }
-        setServerUsername(nextUsername)
-        setShowCredentialModal(false)
-        setCredentialNotice('')
-      } catch {
-        setCredentialNotice('Tarmoq xatosi.')
-      }
-      return
-    }
     if (credentialForm.currentPassword !== adminCredentials.password) {
       setCredentialNotice('Joriy parol noto‘g‘ri.')
       return
@@ -877,40 +811,11 @@ function App() {
     setCredentialNotice('Login/parol yangilandi.')
   }
 
-  const applyAdminDraftToSite = async () => {
+  const applyAdminDraftToSite = () => {
     if (!adminDraft) return
     const nextContact = {}
     for (const lang of LANGUAGES) {
       nextContact[lang] = cleanContactEntryForSave(adminDraft.contactData[lang])
-    }
-    if (USE_BACKEND) {
-      try {
-        const r = await fetch(apiUrl('/api/admin/site-data'), {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            products: adminDraft.products,
-            news: adminDraft.news,
-            aboutContent: adminDraft.aboutContent,
-            contactData: nextContact,
-          }),
-        })
-        const errBody = await r.json().catch(() => ({}))
-        if (!r.ok) {
-          setStatusMessage(String(errBody.error || `Saqlashda xatolik (${r.status})`))
-          return
-        }
-        setProducts(adminDraft.products)
-        setNews(adminDraft.news)
-        setAboutContent(adminDraft.aboutContent)
-        setContactData(nextContact)
-        setSaveNotice(`✓ ${translations[language].saveSuccess}`)
-        window.setTimeout(() => setSaveNotice(''), 3500)
-      } catch {
-        setStatusMessage('Serverga ulanib bo‘lmadi.')
-      }
-      return
     }
     setProducts(adminDraft.products)
     setNews(adminDraft.news)
@@ -933,18 +838,11 @@ function App() {
     window.setTimeout(() => setSaveNotice(''), 3500)
   }
 
-  const handleAdminLogout = async () => {
-    if (USE_BACKEND) {
-      try {
-        await fetch(apiUrl('/api/admin/logout'), {
-          method: 'POST',
-          credentials: 'include',
-        })
-      } catch {
-        /* ignore */
-      }
-    }
+  const handleAdminLogout = () => {
     setIsAdmin(false)
+    setShowAdmin(false)
+    setShowLoginPassword(false)
+    setLoginData({ username: '', password: '' })
   }
 
   const updateDraftProduct = (id, field, rawValue) => {
@@ -1114,13 +1012,8 @@ function App() {
   }
 
   const sendToTelegram = async (message) => {
-    const mustUseServerOrder = import.meta.env.PROD || USE_BACKEND
-    const orderUrl =
-      ORDER_API_URL.trim() ||
-      (mustUseServerOrder ? apiUrl('/api/send-order') : '')
-
-    if (orderUrl) {
-      const response = await fetch(orderUrl, {
+    if (ORDER_API_URL.trim()) {
+      const response = await fetch(ORDER_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: message }),
@@ -1130,10 +1023,6 @@ function App() {
         throw new Error(data.description || data.error || `HTTP ${response.status}`)
       }
       return
-    }
-
-    if (import.meta.env.PROD) {
-      throw new Error('Buyurtma serveri sozlanmagan (VITE_USE_BACKEND yoki VITE_ORDER_API_URL).')
     }
 
     if (BOT_TOKEN && CHAT_ID) {
@@ -1332,24 +1221,29 @@ function App() {
                 setLangMenuOpen((open) => !open)
               }}
             >
+              <span className="lang-trigger-globe" aria-hidden>
+                🌐
+              </span>
               <span className="lang-trigger-text">{langLabel(language)}</span>
               <span className="lang-chevron" aria-hidden>
                 ▾
               </span>
             </button>
             <div className="lang-list" role="listbox">
-              {LANGUAGES.filter((lang) => lang !== language).map((lang) => (
+              {LANGUAGES.map((lang) => (
                 <button
                   key={lang}
                   type="button"
                   role="option"
+                  className={lang === language ? 'active' : ''}
                   onClick={(e) => {
                     e.stopPropagation()
                     setLanguage(lang)
                     setLangMenuOpen(false)
                   }}
                 >
-                  {langLabel(lang)}
+                  <span>{langLabel(lang)}</span>
+                  <span>{langLongLabel(lang)}</span>
                 </button>
               ))}
             </div>
@@ -1440,21 +1334,23 @@ function App() {
 
       {activeSection === 'home' && (
         <>
-          <section className="hero">
-            <div className="hero-text">
+          <section className="hero hero-video" key={homeHeroKey}>
+            <video
+              className="hero-video-bg"
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              poster={HERO_POSTER_URL}
+            >
+              <source src={HERO_VIDEO_URL} type="video/mp4" />
+            </video>
+            <div className="hero-video-overlay" />
+            <div className="hero-text hero-text-animated">
               <h1>{t.heroTitle}</h1>
               <p>{t.heroText}</p>
               <p>{t.heroExtra}</p>
-            </div>
-            <div className="hero-media">
-              {heroSlides.map((slide, index) => (
-                <img
-                  key={slide.src}
-                  className={index === heroSlideIndex ? 'active' : ''}
-                  src={slide.src}
-                  alt={slide.alt}
-                />
-              ))}
             </div>
           </section>
           {renderProductsAndOrder()}
@@ -1504,6 +1400,17 @@ function App() {
             <div className="contact-intro-block">
               <h2>{t.contactTitle}</h2>
               <p>{t.contactDesc}</p>
+            </div>
+            <div className="contact-map-wrap">
+              <iframe
+                src={mapsEmbed}
+                title="HARDT oil map"
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
+              <a className="contact-map-address" href={mapsLink} target="_blank" rel="noreferrer">
+                📍 {mapQuery}
+              </a>
             </div>
             <div className="contact-cards-grid">
               <a
@@ -1584,7 +1491,14 @@ function App() {
                   </button>
                 </div>
                 <button type="submit">{t.enter}</button>
-                <button type="button" onClick={() => setShowAdmin(false)}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAdmin(false)
+                    setShowLoginPassword(false)
+                    setLoginData({ username: '', password: '' })
+                  }}
+                >
                   {t.close}
                 </button>
                 {loginError && <p className="error">{loginError}</p>}
@@ -1932,6 +1846,28 @@ function App() {
                         )
                       }
                     />
+                    <label className="admin-field-label">Google Maps manzili</label>
+                    <input
+                      type="text"
+                      placeholder="Google Maps qidiruv manzili"
+                      value={adminDraft.contactData[adminEditLang].mapQuery || ''}
+                      onChange={(e) =>
+                        setAdminDraft((d) =>
+                          d
+                            ? {
+                                ...d,
+                                contactData: {
+                                  ...d.contactData,
+                                  [adminEditLang]: {
+                                    ...d.contactData[adminEditLang],
+                                    mapQuery: e.target.value,
+                                  },
+                                },
+                              }
+                            : d,
+                        )
+                      }
+                    />
                     <p className="admin-section-desc">{t.contactPhonesHint}</p>
                     <div className="admin-phone-list">
                       {adminDraft.contactData[adminEditLang].phones.map((ph, idx) => (
@@ -2058,20 +1994,40 @@ function App() {
         </div>
       )}
 
-      <footer className="footer">
-        <div className="footer-nav">
-          {SECTION_IDS.map((sectionId, index) => (
-            <button
-              key={`footer-${sectionId}`}
-              type="button"
-              className={activeSection === sectionId ? 'active' : ''}
-              onClick={() => goToSection(sectionId)}
-            >
-              {t.nav[index]}
-            </button>
-          ))}
+      <footer className="footer footer-pro">
+        <div className="footer-columns">
+          <div>
+            <h3>HARD.OIL</h3>
+            <p>{FOOTER_INFO.desc}</p>
+          </div>
+          <div>
+            <h4>Menu</h4>
+            <ul>
+              {FOOTER_INFO.menu.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h4>Services</h4>
+            <ul>
+              {FOOTER_INFO.services.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h4>Contact</h4>
+            <ul>
+              <li>{FOOTER_INFO.email}</li>
+              {contactData[language].phones.filter(Boolean).map((phone) => (
+                <li key={phone}>{phone}</li>
+              ))}
+              <li>{FOOTER_INFO.address}</li>
+            </ul>
+          </div>
         </div>
-        <p>{t.footer}</p>
+        <p>© 2026 hard.oil. All rights reserved.</p>
       </footer>
     </div>
   )

@@ -1,33 +1,26 @@
-# hard.oil sayt (Vite + React) + Express backend
+# hard.oil frontend (Vite + React)
 
-## Ishga tushirish (development)
+Frontend-only variant for easy Vercel deployment.
 
-1. `cp .env.example .env` va `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SESSION_SECRET` ni to‘ldiring (server ham shu ildizdagi `.env` dan o‘qiydi).
-2. Frontend uchun: `VITE_USE_BACKEND=true`
+## Local run
+
+1. `cp .env.example .env`
+2. Fill `.env` (`VITE_TELEGRAM_BOT_TOKEN`, `VITE_TELEGRAM_CHAT_ID`)
 3. `npm install`
-4. `npm run dev` — Vite (`5173`) va Express (`8787`) birga ishga tushadi; brauzer `/api` ni proxy orqali serverga yuboradi.
+4. `npm run dev`
 
-**Birinchi kirish:** login `admin`, parol `.env` dagi `ADMIN_INITIAL_PASSWORD` (default `hardoil2026`).
+## Build
 
-## Production
+- `npm run build`
+- `npm run preview`
 
-- Frontend: `npm run build` → `dist` ni static hostingga.
-- Backend: `NODE_ENV=production npm run start:server` (yoki PM2/systemd).
-- `FRONTEND_ORIGIN` da real sayt URL; `SESSION_SECRET` kuchli bo‘lsin; `secure` cookie uchun HTTPS kerak.
+## Vercel
 
-## API
+Set Environment Variables in Vercel project:
 
-| Yo‘l | Tavsif |
-|------|--------|
-| `GET /api/site-data` | Sayt ma’lumoti (ommaviy) |
-| `POST /api/send-order` | Buyurtma matni → Telegram |
-| `POST /api/admin/login` | Admin login (session cookie) |
-| `POST /api/admin/logout` | Chiqish |
-| `PUT /api/admin/site-data` | Mahsulotlar / yangiliklar / kontakt (auth) |
-| `PATCH /api/admin/credentials` | Login/parol almashtirish (auth) |
+- `VITE_TELEGRAM_BOT_TOKEN`
+- `VITE_TELEGRAM_CHAT_ID`
+- `VITE_TELEGRAM_GROUP_LINK` (optional)
+- `VITE_ORDER_API_URL` (optional)
 
-Ma’lumotlar `server/data/site.sqlite` da (git ignore).
-
-## Eski rejim
-
-`VITE_USE_BACKEND=false` qilsangiz, mahsulotlar yana `localStorage`da, Telegram esa (devda) to‘g‘ridan-to‘g‘ri frontenddan yuborilishi mumkin.
+No backend service is required in this mode.
